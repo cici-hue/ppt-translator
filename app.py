@@ -214,8 +214,8 @@ def translate_ppt(input_file_path, output_file_path, src_lang, tgt_lang):
 
 # ====================== 4. Streamlit Web交互界面（多语言下拉框，操作不变） ======================
 def main():
-    st.set_page_config(page_title="多语言PPT智能翻译工具", page_icon="📄", layout="wide")
-    st.title("📄 多语言PPT智能翻译工具（DeepSeek驱动）")
+    st.set_page_config(page_title="PPT智能翻译工具", page_icon="📄", layout="wide")
+    st.title("📄 PPT智能翻译工具")
     st.divider()
 
     # 侧边栏：【多语言升级】源/目标语言下拉选择框 + 功能说明
@@ -232,10 +232,10 @@ def main():
         # 功能说明（适配多语言）
         st.info("""
         📌 核心功能说明
-        1. 支持12种主流语言互译，必含德/泰/土耳其/孟加拉/越南语；
-        2. 自动适配目标语言字体，避免乱码（如泰语/孟加拉语专属字体）；
-        3. 保留原PPT所有格式：加粗/颜色/字号+1倍行间距；
-        4. 支持文本框/表格翻译，自动处理文本溢出（最小10pt）；
+        1. 支持12种主流语言互译；
+        2. 自动适配目标语言字体，避免乱码；
+        3. 保留原PPT所有格式；
+        4. 支持文本框/表格翻译；
         5. 仅支持.pptx格式，文件上传后一键翻译、下载结果。
         """)
         st.warning("""
@@ -246,7 +246,7 @@ def main():
         """)
 
     # 主界面：文件上传（不变，仅支持.pptx）
-    st.subheader("📤 上传PPT文件（仅支持Microsoft PowerPoint .pptx格式）")
+    st.subheader("📤 上传PPT文件（仅支持.pptx格式）")
     uploaded_file = st.file_uploader("点击选择或拖拽PPT文件至此处", type=["pptx"], accept_multiple_files=False)
 
     if uploaded_file is not None:
