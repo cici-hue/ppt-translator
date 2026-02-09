@@ -1,0 +1,7 @@
+streamlit>=1.30.0
+python-pptx>=1.0.2
+openai>=1.0.0
+python-dotenv>=1.0.0
+uuid>=1.30
+pillow>=10.0.0
+lxml>=4.9.0
