@@ -7,6 +7,9 @@ import os
 from pptx.util import Pt
 from dotenv import load_dotenv
 import uuid
+# 新增：语言检测库
+from langdetect import detect, LangDetectException
+from langdetect.lang_detect_exception import LangDetectException
 
 # ====================== 1. API Key Security Configuration (Unchanged) ======================
 if os.path.exists(".env"):
@@ -22,21 +25,21 @@ client = openai.OpenAI(
 )
 
 # ====================== 2. Multi-Language Config + Font Mapping (Updated for English UI) ======================
-# Language Config: {Display Name (English): (DeepSeek Standard Code, Language English Name)}
-# Required languages: Chinese/English/German/Thai/Turkish/Bengali/Vietnamese
+# Language Config: {Display Name (English): (DeepSeek Standard Code, Language English Name, langdetect Code)}
+# 新增：langdetect 对应的语言编码，确保检测结果能匹配
 LANGUAGE_CONFIG = {
-    "Chinese": ("zh", "Chinese"),
-    "English": ("en", "English"),
-    "German": ("de", "German"),       # Required
-    "Thai": ("th", "Thai"),           # Required
-    "Turkish": ("tr", "Turkish"),     # Required
-    "Bengali": ("bn", "Bengali"),     # Required
-    "Vietnamese": ("vi", "Vietnamese"), # Required
-    "French": ("fr", "French"),
-    "Spanish": ("es", "Spanish"),
-    "Russian": ("ru", "Russian"),
-    "Japanese": ("ja", "Japanese"),
-    "Korean": ("ko", "Korean")
+    "Chinese": ("zh", "Chinese", "zh-cn"),
+    "English": ("en", "English", "en"),
+    "German": ("de", "German", "de"),
+    "Thai": ("th", "Thai", "th"),
+    "Turkish": ("tr", "Turkish", "tr"),
+    "Bengali": ("bn", "Bengali", "bn"),
+    "Vietnamese": ("vi", "Vietnamese", "vi"),
+    "French": ("fr", "French", "fr"),
+    "Spanish": ("es", "Spanish", "es"),
+    "Russian": ("ru", "Russian", "ru"),
+    "Japanese": ("ja", "Japanese", "ja"),
+    "Korean": ("ko", "Korean", "ko")
 }
 # Target Language - Font Mapping | Core: System-native fonts to avoid garbled text
 FONT_MAP = {
@@ -56,7 +59,7 @@ FONT_MAP = {
 # Extract language display names (for Streamlit dropdown)
 LANG_NAMES = list(LANGUAGE_CONFIG.keys())
 
-# ====================== 3. Utility Functions (Minimal English Adaptation) ======================
+# ====================== 3. Utility Functions (Added Language Detection) ======================
 def adjust_text_overflow_mild(text_frame, min_font_size=10):
     """Mild text overflow adjustment (Unchanged)"""
     if not text_frame or not text_frame.text.strip():
@@ -86,6 +89,15 @@ def adjust_text_overflow_mild(text_frame, min_font_size=10):
         except:
             pass
 
+def detect_text_language(text):
+    """新增：检测文本语言，返回langdetect编码，失败则返回None"""
+    if not text or len(text.strip()) < 2:  # 文本过短无法准确检测
+        return None
+    try:
+        return detect(text.strip())
+    except LangDetectException:
+        return None
+
 def translate_text(text, src_lang_code, src_lang_name, tgt_lang_code, tgt_lang_name):
     """Multi-language translation function | Pass language code + name (English UI adaptation)"""
     if not text or not text.strip():
@@ -110,10 +122,10 @@ def translate_text(text, src_lang_code, src_lang_name, tgt_lang_code, tgt_lang_n
         return text
 
 def translate_ppt(input_file_path, output_file_path, src_lang, tgt_lang):
-    """Core PPT translation logic | Parse source/target language config, dynamic font matching"""
-    # Parse source/target language config (code + name)
-    src_lang_code, src_lang_name = LANGUAGE_CONFIG[src_lang]
-    tgt_lang_code, tgt_lang_name = LANGUAGE_CONFIG[tgt_lang]
+    """Core PPT translation logic | Added language detection to skip target language text"""
+    # Parse source/target language config (code + name + langdetect code)
+    src_lang_code, src_lang_name, src_detect_code = LANGUAGE_CONFIG[src_lang]
+    tgt_lang_code, tgt_lang_name, tgt_detect_code = LANGUAGE_CONFIG[tgt_lang]
     # Dynamically match target font (solve garbled text)
     target_font = FONT_MAP[tgt_lang_code]
     
@@ -124,7 +136,7 @@ def translate_ppt(input_file_path, output_file_path, src_lang, tgt_lang):
         st.error(f"❌ Failed to load PPT: {str(e)}")
         return False
     
-    total_texts, translated_texts = 0, 0
+    total_texts, translated_texts, skipped_texts = 0, 0, 0  # 新增：skipped_texts 统计跳过的文本数
     # Progress bar + status prompt (English adaptation)
     progress_bar = st.progress(0)
     status_text = st.empty()
@@ -140,6 +152,12 @@ def translate_ppt(input_file_path, output_file_path, src_lang, tgt_lang):
                     original_text = paragraph.text.strip()
                     if original_text:
                         total_texts += 1
+                        # 新增：检测文本语言，若已是目标语言则跳过
+                        detected_lang = detect_text_language(original_text)
+                        if detected_lang == tgt_detect_code:
+                            skipped_texts += 1
+                            continue  # 跳过目标语言文本，不翻译
+                        
                         # Call multi-language translation function
                         translated_text = translate_text(original_text, src_lang_code, src_lang_name, tgt_lang_code, tgt_lang_name)
                         if translated_text and translated_text != original_text:
@@ -170,6 +188,12 @@ def translate_ppt(input_file_path, output_file_path, src_lang, tgt_lang):
                             cell_text = cell.text.strip()
                             if cell_text:
                                 total_texts += 1
+                                # 新增：检测表格文本语言，若已是目标语言则跳过
+                                detected_lang = detect_text_language(cell_text)
+                                if detected_lang == tgt_detect_code:
+                                    skipped_texts += 1
+                                    continue
+                                
                                 translated_cell = translate_text(cell_text, src_lang_code, src_lang_name, tgt_lang_code, tgt_lang_name)
                                 if translated_cell and translated_cell != cell_text:
                                     cell_src_font = None
@@ -199,11 +223,12 @@ def translate_ppt(input_file_path, output_file_path, src_lang, tgt_lang):
         prs.save(output_file_path)
         progress_bar.progress(100)
         status_text.text("✅ Translation completed!")
-        # Multi-language translation statistics (English format)
+        # Multi-language translation statistics (Updated: add skipped count)
         st.success(f"""
         📊 Translation Statistics | Source Language: {src_lang} → Target Language: {tgt_lang}
         ├─ Total text blocks (text boxes + tables): {total_texts}
         ├─ Successfully translated text blocks: {translated_texts}
+        ├─ Skipped target language text blocks: {skipped_texts}  # 新增：显示跳过的文本数
         ├─ Target language adapted font: {target_font}
         └─ Format preservation: 1:1 retention of bold/color/font size + 1x line spacing + mild overflow adjustment
         """)
@@ -229,20 +254,22 @@ def main():
         if src_lang == tgt_lang:
             st.error("❌ Source language and target language cannot be the same! Please reselect.")
             st.stop()
-        # Feature description (English adaptation)
+        # Feature description (Updated: add language detection feature)
         st.info("""
         📌 Core Features
         1. Supports mutual translation between 12 mainstream languages;
         2. Automatically adapts target language fonts to avoid garbled text;
         3. Preserves all original PPT formats;
         4. Supports text box/table translation;
-        5. Only supports .pptx format - upload file, translate with one click, download results.
+        5. Only supports .pptx format - upload file, translate with one click, download results;
+        6. Smart language detection: Skip translation for text already in target language (new feature).
         """)
         st.warning("""
         ⚠️ Important Notes
         1. Recommended to upload PPT files smaller than 20MB for faster translation;
         2. Complex artistic text/special shape text may not be parsed (python-pptx library limitation);
-        3. Please verify professional terminology in translation results to ensure accuracy.
+        3. Please verify professional terminology in translation results to ensure accuracy;
+        4. Language detection requires at least 2 characters (short text may not be detected accurately).
         """)
 
     # Main Interface: File Upload (Fully English)
@@ -284,7 +311,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
-
-
